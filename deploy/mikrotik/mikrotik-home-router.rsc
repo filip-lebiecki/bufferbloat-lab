@@ -46,7 +46,7 @@
 # masquerade, and it is load-bearing: it takes an 8-flow host from 7.2:1 down
 # to 1.0:1 against a 1-flow host.
 #
-# DOWNLOAD IS cake-nat=no, AND THAT IS NOT A TYPO. See note 5 at the bottom:
+# DOWNLOAD IS cake-nat=no, AND THAT IS NOT A TYPO. See note 4 at the bottom:
 # cake-nat=yes on the download queue measured WORSE THAN NO SHAPING AT ALL on
 # the real internet, repeatably. The symmetric-looking config is the wrong one.
 #
@@ -75,7 +75,7 @@ add chain=forward action=mark-packet new-packet-mark=wan-ul passthrough=no \
 # without these your entire IPv6 traffic is completely unshaped in both
 # directions — and IPv6 is what most big sites and speedtests actually use.
 # (Native IPv6 on the WAN only. IPv6 riding a 6in4/HE tunnel is encapsulated
-#  and will NOT match these rules — see note 4.)
+#  and will NOT match these rules — see note 5.)
 /ipv6 firewall mangle
 add chain=forward action=mark-packet new-packet-mark=wan-dl passthrough=no \
     in-interface=ether1 comment="CAKE download classify"
@@ -144,7 +144,7 @@ add name=sqm-upload   parent=global packet-mark=wan-ul queue=cake-up   max-limit
 #    Trade-off in one line: interface-parented keeps FastTrack but is not
 #    portable; parent=global is portable but costs you FastTrack.
 #
-# 5. cake-nat=no ON THE DOWNLOAD QUEUE. The most counter-intuitive setting in
+# 4. cake-nat=no ON THE DOWNLOAD QUEUE. The most counter-intuitive setting in
 #    this file, and the most expensive one to get wrong. Measured on a hAP ax²
 #    running RouterOS 7.24, against the real internet, same box and same line
 #    with only cake-down changing:
@@ -168,7 +168,7 @@ add name=sqm-upload   parent=global packet-mark=wan-ul queue=cake-up   max-limit
 #    either way (nat 0.9 ms, nonat 0.8 ms). And upload is unaffected on both
 #    platforms — cake-nat=yes on the UPLOAD queue stays load-bearing.
 #
-# 4. Tunnelled IPv6 (6in4 / Hurricane Electric) is NOT covered. The outer
+# 5. Tunnelled IPv6 (6in4 / Hurricane Electric) is NOT covered. The outer
 #    packets are IPv4 proto-41 addressed to the router itself (chain=input),
 #    and the router's own encapsulated traffic leaves via chain=output — so
 #    forward-chain rules miss it in both directions. Native IPv6 on the WAN
