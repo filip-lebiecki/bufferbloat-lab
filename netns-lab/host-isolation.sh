@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 # The "roommate with 8 torrents" test (run with sudo): host A opens 8
-# parallel flows, host B opens 1. Per-FLOW fairness (fq_codel) gives A
-# 8/9 of the link; cake's per-HOST isolation splits it 50/50.
-# Run once with set-qdisc.sh fq_codel, once with cake.
+# parallel flows, host B opens 1. Per-FLOW fairness gives A 8/9 of the link;
+# per-HOST fairness splits it 50/50.
+#
+# Run once with set-qdisc.sh fq_codel, then with set-qdisc.sh cake-host.
+#
+# NOT with plain `cake`: its default triple-isolate collapses to per-flow when
+# every flow is aimed at the same server, and this test then measures 8:1 under
+# cake too. Measured on kernel 6.8, 50 mbit, 8 flows vs 1:
+#     fq_codel            41.8 / 5.9 Mbit    (8:1)
+#     cake (default)      41.8 / 5.5 Mbit    (8:1 — the demo looks broken)
+#     cake dual-srchost   24.3 / 23.1 Mbit   (50/50)
 # Usage: sudo ./host-isolation.sh [seconds]
 set -euo pipefail
 
