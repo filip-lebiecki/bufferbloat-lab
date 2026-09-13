@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.ruff_cache/
+.DS_Store
+
+# cakemeter run exports
+cakemeter-runs-*.csv
+cakemeter-runs-*.json

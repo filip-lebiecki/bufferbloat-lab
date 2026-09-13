@@ -1,0 +1,29 @@
+# Re-apply cake after every boot, and after the WAN comes back.
+#
+#   sudo install -m755 cake-sqm.sh /usr/local/sbin/cake-sqm.sh
+#   sudo cp cake-sqm.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cake-sqm.service
+#
+# Edit the rates below, then `systemctl restart cake-sqm` to apply a change.
+# tc state is runtime-only: it does not survive a reboot, which is the entire
+# reason this unit exists.
+
+[Unit]
+Description=CAKE SQM on the WAN
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=WAN=eth0
+Environment=UP=45mbit
+Environment=DOWN=90mbit
+Environment=OVERHEAD=ethernet
+Environment=ACK_FILTER=on
+ExecStart=/usr/local/sbin/cake-sqm.sh on
+ExecStop=/usr/local/sbin/cake-sqm.sh off
+
+[Install]
+WantedBy=multi-user.target
