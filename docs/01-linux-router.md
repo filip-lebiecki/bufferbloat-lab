@@ -111,14 +111,36 @@ sudo ./deploy/linux/cake-sqm.sh off
 | `dual-srchost` (egress) | Share the link per LAN machine first, then per flow inside each machine. Going out, the host that matters is the one that *sent* the packet. One roommate with eight torrents gets one machine's share, not eight flows' worth. |
 | `dual-dsthost` (ingress) | The same idea pointed the other way: coming in, the host that matters is the one the packet is *for*. |
 | `ethernet` | Tells cake about the 38 bytes of per-packet framing it otherwise pretends aren't there. Without it you type 45 and put ~46 on the wire — and if the ISP's limit is exactly 45, you just handed the queue back to them. |
-| `ack-filter` | Drops redundant TCP acks on the narrow direction. Worth 5–10% of upload on a lopsided line (500/25). Near zero on a symmetric one. |
+| `ack-filter` | Drops redundant TCP acks on the narrow direction. How much it buys depends entirely on **how lopsided** the line is — see the table below. Leave it on; it costs nothing when it finds nothing. |
 | `ingress` | Only on the download side. The bytes were already spent crossing the real link before you ever saw them, so cake must count what it throws away against the rate as well. This is also why your download lands slightly under the number you typed. |
+
+> **A note if you also run RouterOS:** `nat` on the *ingress* queue is safe on Linux and
+> measured identical either way (A+ at 0.9 ms with `nat`, 0.8 ms with `nonat`, same client
+> and same line). On RouterOS the equivalent setting on the download queue is actively
+> harmful — see [trap 4 in the MikroTik chapter](02-mikrotik.md). Do not carry that finding
+> across; it does not apply here.
 
 `matchall` in step 4 is the match condition — every packet, no exceptions — and
 `mirred egress redirect` is the action: take the packet off the arrival path and hand it
 to `ifb-sqm` as though `ifb-sqm` were sending it. The packet was arriving; now, as far as
 the kernel is concerned, it is leaving a device you own. There is no such thing as a
 download queue, so we turned the download into an upload.
+
+### How much `ack-filter` is actually worth
+
+Measured, both directions saturated, 16-second runs:
+
+| | upload @ 100/50 | upload @ 100/20 |
+|---|---|---|
+| `no-ack-filter` (default) | 43.2 Mbit | 15.7 Mbit |
+| `ack-filter` | 43.3 (**+0.2%**) — 55 acks dropped | 16.4 (**+4.7%**) — 16,650 acks dropped |
+| `ack-filter-aggressive` | 43.6 (+0.8%) | 17.3 (**+10.5%**) |
+
+The arithmetic behind it: the ack stream for a 91 Mbit download is roughly 3 Mbit. On a
+20 Mbit uplink that is 15% of the link, so acks genuinely queue behind each other and the
+filter has something to collapse. On a 50 Mbit uplink it is 6%, with enough headroom that
+they rarely stack up at all. **100/50 is a 2:1 line, and 2:1 is not lopsided.** If your
+line is 5:1 or worse, this is worth real bandwidth; if it is 2:1, it is noise.
 
 ### Link-layer overhead: pick the right one
 

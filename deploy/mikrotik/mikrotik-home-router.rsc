@@ -42,7 +42,14 @@
 # --- queue types -------------------------------------------------------------
 # cake-bandwidth=0 is deliberate — the rate lives on max-limit in the tree
 # below, because cake-bandwidth does not shape. See note 1.
-# dual-srchost/dual-dsthost + cake-nat=yes = per-LAN-machine fairness.
+# dual-srchost + cake-nat=yes on UPLOAD = per-LAN-machine fairness behind
+# masquerade, and it is load-bearing: it takes an 8-flow host from 7.2:1 down
+# to 1.0:1 against a 1-flow host.
+#
+# DOWNLOAD IS cake-nat=no, AND THAT IS NOT A TYPO. See note 5 at the bottom:
+# cake-nat=yes on the download queue measured WORSE THAN NO SHAPING AT ALL on
+# the real internet, repeatably. The symmetric-looking config is the wrong one.
+#
 # ack-filter on upload only: it thins redundant ACKs, which helps on
 # asymmetric links and does nothing useful in the download direction.
 /queue type
@@ -50,7 +57,7 @@ add name=cake-up kind=cake cake-bandwidth=0 cake-diffserv=diffserv3 \
     cake-flowmode=dual-srchost cake-nat=yes cake-ack-filter=filter \
     cake-rtt-scheme=internet cake-overhead-scheme=ethernet
 add name=cake-down kind=cake cake-bandwidth=0 cake-diffserv=diffserv3 \
-    cake-flowmode=dual-dsthost cake-nat=yes \
+    cake-flowmode=dual-dsthost cake-nat=no \
     cake-rtt-scheme=internet cake-overhead-scheme=ethernet
 
 # --- direction classifiers (IPv4) --------------------------------------------
@@ -106,7 +113,8 @@ add name=sqm-upload   parent=global packet-mark=wan-ul queue=cake-up   max-limit
 #    RouterOS 7.23.2 (see rb5009-cake.rsc):
 #      cake-bandwidth=420M, no max-limit -> 490 Mbps  (ignored entirely)
 #      cake-bandwidth=50M,  no max-limit -> 206 Mbps  (4x over)
-#      max-limit=440M, cake-bandwidth=0  -> caps at 435. Waveform A+, libreqos A
+#      max-limit=440M, cake-bandwidth=0  -> 395-452 Mbps, Waveform A+ (+0 ms
+#                                           both directions), libreqos A (+11 ms)
 #    max-limit=440M with cake-bandwidth=450M measured identically to
 #    cake-bandwidth=0, confirming cake-bandwidth contributes nothing.
 #    HTB shapes; cake does AQM, flow isolation and per-host fairness — which
@@ -135,6 +143,30 @@ add name=sqm-upload   parent=global packet-mark=wan-ul queue=cake-up   max-limit
 #    this is that failure — switch back to the parent=global version above.
 #    Trade-off in one line: interface-parented keeps FastTrack but is not
 #    portable; parent=global is portable but costs you FastTrack.
+#
+# 5. cake-nat=no ON THE DOWNLOAD QUEUE. The most counter-intuitive setting in
+#    this file, and the most expensive one to get wrong. Measured on a hAP ax²
+#    running RouterOS 7.24, against the real internet, same box and same line
+#    with only cake-down changing:
+#      cake-nat=yes  dual-dsthost   grade D    290 / 311 / 312 ms of bloat
+#      cake-nat=yes  flows          grade F    871 ms
+#      download tree disabled       grade B     53 ms
+#      cake-nat=no   flows          grade A+   1.8 ms
+#      cake-nat=no   dual-dsthost   grade A+   0.0 / 0.2 ms
+#    cake-nat=yes on the download queue was WORSE THAN NOT SHAPING AT ALL.
+#    Across all runs: nat=yes produced C/D/F (191-871 ms) six times, nat=no
+#    produced A+ (0.0-2.7 ms) five times. The severity varies; the direction
+#    never does. Ruled out: CPU (13-17% peak), upstream congestion (pinged from
+#    upstream of the router during a failing run: mdev 0.089), parallel flows,
+#    a slow lab source, and the shaper rate (still 289 ms at max-limit=20M).
+#
+#    An emulated-modem lab will NOT catch this: it measured 20.5 ms, every run.
+#    It needs the real internet's mix of RTTs, sources and capacity.
+#
+#    It is RouterOS-specific. Do NOT generalise it to Linux: a control run of
+#    ingress cake on a Linux router, same client and same line, measured A+
+#    either way (nat 0.9 ms, nonat 0.8 ms). And upload is unaffected on both
+#    platforms — cake-nat=yes on the UPLOAD queue stays load-bearing.
 #
 # 4. Tunnelled IPv6 (6in4 / Hurricane Electric) is NOT covered. The outer
 #    packets are IPv4 proto-41 addressed to the router itself (chain=input),

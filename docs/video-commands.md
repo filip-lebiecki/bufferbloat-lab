@@ -236,7 +236,8 @@ sudo tc qdisc replace dev ifb0 root cake bandwidth 90mbit nat dual-dsthost ether
 and by whoever it is for. `ethernet` accounts for the 38 bytes of framing cake otherwise
 pretends aren't there (without it you type 50 and put 51 on the wire — and if the ISP's
 limit is exactly 50, you just handed the queue back to them). `ack-filter` drops redundant
-acks on the upload: near-nothing on a symmetric line, 5–10% on a lopsided one.
+acks on the upload: measured +0.2% at 100/50 and +4.7% at 100/20 — 2:1 is not lopsided
+enough for it to find anything.
 
 Then run both directions flat out at once. Both links saturated, ping still on idle.
 

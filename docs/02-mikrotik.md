@@ -1,8 +1,8 @@
 # Chapter 2 — cake on MikroTik / RouterOS
 
 RouterOS 7.1+ ships cake as a queue type, so you get the same algorithm as Linux — with
-two structural differences that will silently make your config do **absolutely nothing**
-if you miss them.
+a handful of differences that will silently make your config do **absolutely nothing** —
+or, in one case, something worse than nothing — if you miss them.
 
 Paste-and-go config: [`deploy/mikrotik/mikrotik-home-router.rsc`](../deploy/mikrotik/mikrotik-home-router.rsc)
 
@@ -15,7 +15,7 @@ before you run it.
 
 ---
 
-## The three traps, first, because they are the whole chapter
+## The four traps, first, because they are the whole chapter
 
 ### Trap 1 — FastTrack must be off, or nothing is shaped
 
@@ -46,7 +46,7 @@ This is the one that eats afternoons, because the config *looks* right and the c
 |---|---|
 | `cake-bandwidth=420M`, no `max-limit` | **490 Mbps** — ignored entirely |
 | `cake-bandwidth=50M`, no `max-limit` | **206 Mbps** — 4× over |
-| `max-limit=440M`, `cake-bandwidth=0` | caps at 435. Waveform A+ |
+| `max-limit=440M`, `cake-bandwidth=0` | **395–452 Mbps** — Waveform A+, +0 ms both directions |
 
 `max-limit` on the queue **tree** enforces the rate. `cake-bandwidth` on the queue **type**
 contributes nothing — `max-limit=440M` with `cake-bandwidth=450M` measured identically to
@@ -70,6 +70,37 @@ grade and a bad connection.
 (Native IPv6 on the WAN only. IPv6 riding a 6in4/HE tunnel is encapsulated as IPv4
 proto-41 to the router itself, so forward-chain rules miss it in both directions.)
 
+### Trap 4 — `cake-nat=no` on the download queue, and that is not a typo
+
+The symmetric-looking config is the wrong one, and this is the most expensive setting in
+the file to get wrong. Measured on a hAP ax² running RouterOS 7.24, against the real
+internet, same box and same line with only `cake-down` changing:
+
+| `cake-down` | grade | download bloat |
+|---|---|---|
+| `cake-nat=yes dual-dsthost` | **D** | 290 / 311 / 312 ms |
+| `cake-nat=yes flows` | **F** | 871 ms |
+| download tree disabled entirely | B | 53 ms |
+| `cake-nat=no flows` | A+ | 1.8 ms |
+| **`cake-nat=no dual-dsthost`** | **A+** | **0.0 / 0.2 ms** |
+
+`cake-nat=yes` on the download queue was **worse than not shaping at all**. Across all
+runs, `nat=yes` produced C/D/F (191–871 ms) six times and `nat=no` produced A+ (0.0–2.7 ms)
+five times. The severity varies; the direction never does. Ruled out: CPU (13–17% peak),
+upstream congestion (pinged from upstream of the router *during* a failing run — mdev
+0.089), parallel flows, a slow test source, and the shaper rate (still 289 ms at
+`max-limit=20M`).
+
+An emulated-modem lab will not catch this — it measures 20.5 ms every run. It needs the
+real internet's mix of RTTs, sources and capacity.
+
+**It is RouterOS-specific. Do not generalise it to Linux:** a control run of ingress cake
+on a Linux router, same client and same line, graded A+ either way (`nat` 0.9 ms, `nonat`
+0.8 ms). And **upload is unaffected on both platforms** — `cake-nat=yes` on the *upload*
+queue stays load-bearing, taking an 8-flow host from 7.2:1 down to 1.0:1.
+
+So: **`cake-nat=yes` on upload, `cake-nat=no` on download.**
+
 ---
 
 ## The configuration
@@ -82,12 +113,13 @@ add name=cake-up kind=cake cake-bandwidth=0 cake-diffserv=diffserv3 \
     cake-flowmode=dual-srchost cake-nat=yes cake-ack-filter=filter \
     cake-rtt-scheme=internet cake-overhead-scheme=ethernet
 add name=cake-down kind=cake cake-bandwidth=0 cake-diffserv=diffserv3 \
-    cake-flowmode=dual-dsthost cake-nat=yes \
+    cake-flowmode=dual-dsthost cake-nat=no \
     cake-rtt-scheme=internet cake-overhead-scheme=ethernet
 ```
 
-`cake-nat=yes` + `dual-srchost`/`dual-dsthost` is per-LAN-machine fairness seen through
-the NAT — the same pairing as Linux. `cake-ack-filter` on upload only.
+`cake-nat=yes` + `dual-srchost` on upload is per-LAN-machine fairness seen through the
+masquerade — the same pairing as Linux, and load-bearing. On **download**, `dual-dsthost`
+stays and `cake-nat` comes **off** — see trap 4. `cake-ack-filter` on upload only.
 
 **2. Direction classifiers** — a `parent=global` tree sees both directions at once and
 cannot tell them apart, so mangle supplies the direction. `in-interface=<wan>` is
