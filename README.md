@@ -1,8 +1,11 @@
 # bufferbloat-lab
 
-Companion repository for the video **“Bufferbloat: why your internet lags, and the one line that fixes it.”**
+Companion repository for the bufferbloat videos:
 
-📺 **Video:** _<!-- TODO: paste the YouTube link here -->_
+| | Video | Commands and notes |
+|---|---|---|
+| 1 | **Bufferbloat: why your internet lags, and the one line that fixes it** — 📺 _<!-- TODO: paste the YouTube link here -->_ | [docs/video-commands.md](docs/video-commands.md) |
+| 2 | **CAKE, taken apart: six lines, six problems** — 📺 _<!-- TODO: paste the YouTube link here -->_ | [docs/cake-explained.md](docs/cake-explained.md) |
 
 Your connection is fast. Your speed test says so. And the moment somebody starts an
 upload, your game rubber-bands, your call freezes and your ping goes from 20 ms to
@@ -28,6 +31,40 @@ Measured on the 3-box lab in this repo, 50 Mbit uplink, 20 ms emulated internet.
 
 ---
 
+## CAKE in six lines (video 2)
+
+One line fixes the upload. The full fix — both directions, fair per machine through NAT —
+is six:
+
+```bash
+# upload
+sudo tc qdisc replace dev eth0 root cake bandwidth 50mbit nat dual-srchost ethernet ack-filter
+# download: turn arriving traffic into leaving traffic, then queue it
+sudo ip link add ifb0 type ifb
+sudo ip link set ifb0 up
+sudo tc qdisc add dev eth0 handle ffff: ingress
+sudo tc filter add dev eth0 parent ffff: matchall action mirred egress redirect dev ifb0
+sudo tc qdisc replace dev ifb0 root cake bandwidth 100mbit nat dual-dsthost ethernet ingress
+```
+
+Same lab with a "bad modem" (100/50, 1000-packet FIFO), same traffic, only the queue changed:
+
+| problem | mechanism | FIFO → CAKE |
+|---|---|---|
+| lag under load | COBALT (CoDel + BLUE) | call 209 ms → **20.6 ms** |
+| small packets stuck behind big ones | sparse flows go first | a 9.4 Mbit stream at idle latency next to a full upload |
+| a UDP flood that won't back off | per-flow queues | TCP squeezed out → **23 of 50 Mbit** |
+| one machine with 8 connections | `nat dual-srchost` | 42 / 5 → **24 / 23 Mbit** |
+| calls vs backups | tins (DSCP) | LE backup yields to ~3 Mbit; EF stays at µs |
+| the other direction | shape the download too | upload 35 → **43 Mbit** |
+| **libreqos grade** | | **D → A+** |
+
+Every command, what it shows and why: **[docs/cake-explained.md](docs/cake-explained.md)**.
+To reproduce it, [`lab/set-modem.sh`](lab/set-modem.sh) `bloat|cake` switches the router and
+[`lab/load.sh`](lab/load.sh) starts each chapter's traffic.
+
+---
+
 ## Just fix my router
 
 Three self-contained chapters. Pick your box:
@@ -45,7 +82,9 @@ WAN=eth0 UP=45mbit DOWN=90mbit sudo ./deploy/linux/cake-sqm.sh
 ```
 
 Set `UP`/`DOWN` to **~90% of your measured rates**, not your advertised tier. Measure
-the line unshaped first. The 10% you give up is what buys you the queue.
+the line unshaped first — **at busy hours**, when everyone's online. The 10% you give up is
+what buys you the queue. (A 500 Mbit line that only delivers 300–370 in the evening got
+*worse* with CAKE at 440, and A+ at 300.)
 
 **Then test it.** [waveform.com/tools/bufferbloat](https://www.waveform.com/tools/bufferbloat)
 or [test.libreqos.com](https://test.libreqos.com) — run it from a wired machine behind
@@ -72,6 +111,10 @@ buffer — i.e. your ISP's modem). Three VMs work fine.
                                                      ▼
                                               ★ THE QUEUE ★
 ```
+
+For video 2 the router also plays the bad modem: `sudo ./lab/set-modem.sh bloat` puts a
+100/50 Mbit HTB with a 1000-packet FIFO on both directions, `set-modem.sh cake` swaps in
+the six lines. See [lab/README.md](lab/README.md#video-2-the-cake-deep-dive).
 
 ### Option B — one laptop, zero hardware ([`netns-lab/`](netns-lab/))
 
@@ -114,11 +157,15 @@ uv run tools/caketune.py --wan eth0
 
 ---
 
-## The whole video, as commands
+## The whole videos, as commands
 
-[docs/video-commands.md](docs/video-commands.md) — every command in the video, chapter by
-chapter, in order, with what each one is for. Useful if you are following along or just
-want the `tc` lines without the narration.
+- [docs/video-commands.md](docs/video-commands.md) — video 1: every command, chapter by
+  chapter, in order, with what each one is for.
+- [docs/cake-explained.md](docs/cake-explained.md) — video 2: the six lines, the six
+  problems they fix, how to read `tc -s qdisc show` for cake, the measured DSCP → tin map,
+  and tuning for your own line.
+
+Useful if you are following along or just want the `tc` lines without the narration.
 
 ---
 
@@ -126,9 +173,12 @@ want the `tc` lines without the narration.
 
 ```
 docs/     01-linux-router.md  02-mikrotik.md  03-unifi.md   deploy guides
-          video-commands.md                                  the video, as a command list
+          video-commands.md                                  video 1, as a command list
+          cake-explained.md                                  video 2: cake, taken apart
 lab/      setup-{router,client,server}.sh                     the 3-box rig
-          setup-router-{cake,org}.sh                          the real-internet A/B test
+          setup-router-{cake,org}.sh  set-modem.sh            bad modem vs cake, at matched rates
+          load.sh                                             each chapter's traffic, one command
+          tins.sh  flowwatch.sh  dscpmap.sh                   reading cake's queue on the router
 netns-lab/ setup-testbed.sh + set-qdisc.sh + 8 demos          the one-machine lab
 tools/    cakemeter.py  caketune.py                           the meter and the tuner
 deploy/   linux/cake-sqm.sh  mikrotik/mikrotik-home-router.rsc  paste-and-go configs

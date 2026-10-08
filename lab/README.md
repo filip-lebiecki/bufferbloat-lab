@@ -95,6 +95,55 @@ The comparison is only honest if both halves run the same numbers.
 Result in the video: **C / 78 ms** → **A+ / ~1 ms**. Same machine, same ISP, only the
 router's qdisc changed.
 
+## Video 2: the CAKE deep-dive
+
+Same three boxes. The difference: the **router** plays the bad modem, so it can be swapped
+for cake with one command while the traffic keeps running.
+
+```bash
+# router .31
+sudo ./set-modem.sh bloat     # 100 down / 50 up, HTB + 1000-packet pfifo, both directions
+sudo ./set-modem.sh cake      # the six lines: cake both directions, same rates
+sudo ./set-modem.sh show      # what's on eth0 and ifb0 right now
+sudo ./set-modem.sh off       # bare WAN
+```
+
+`set-modem.sh` is a thin wrapper around `setup-router-org.sh` and `setup-router-cake.sh`,
+so it must sit next to them. It is also the A/B below, under a shorter name.
+
+On the client, [`load.sh`](load.sh) starts each chapter's traffic in the background, so you
+can flip the router between `bloat` and `cake` and watch the difference:
+
+```bash
+# client .32
+./load.sh intro       # upload + LE "torrent" + EF call + ping + roommate's 8 streams
+./load.sh standing    # problem 1: one upload + ping
+./load.sh sparse      # problem 2: one upload + a 9.4 Mbit unmarked stream
+./load.sh bully       # problem 3: TCP vs a 50M UDP flood
+./load.sh roommate    # problem 4: 8 streams from .32, 1 from .42
+./load.sh tins        # problem 5: two normal uploads + one LE
+./load.sh voice       # problem 5: upload + 1M EF UDP   (./load.sh cheat: greedy TCP marked EF)
+./load.sh bothways    # problem 6: upload + download at once
+./load.sh dashboard   # chapter 11: upload, LE upload, ping, EF call
+./load.sh status      # last line of each running test
+./load.sh stop
+```
+
+It needs `iperf3` listeners on 5201-5204 and `irtt server -i 0` on the server —
+`setup-server.sh` starts both — and `irtt` on the client (`apt install irtt`).
+
+Reading the queue on the router:
+
+| script | what it shows |
+|---|---|
+| `watch -n1 tc -s qdisc show dev eth0` | everything, as in the video |
+| `watch -n1 ./tins.sh [eth0\|ifb0]` | just the per-tin rows: thresh, delays, backlog, pkts, drops, flows |
+| `./flowwatch.sh [seconds] [dev]` | one line per second: sparse/bulk flow gauges and Best Effort `av_delay` / `sp_delay` |
+| `./dscpmap.sh` | pings once per DSCP code point and reports which tin's counter moved — the map on *your* kernel |
+| `sudo conntrack -L -p tcp \| grep ESTABLISHED \| grep -E 'dport=520[12] '` | why `dual-srchost` without `nat` does nothing |
+
+The walkthrough, with every number from the video: [docs/cake-explained.md](../docs/cake-explained.md).
+
 ## Adapting this to your addresses
 
 The addresses are hardcoded at the top of each script (`192.168.80.0/23` for the LAN,

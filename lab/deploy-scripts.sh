@@ -30,15 +30,19 @@ fail=0
 # The two web tools ride along: they have the same stale-copy hazard as the
 # setup scripts, and a tuner that is a version behind is worse than none.
 for spec in "setup-router.sh:ROUTER_SSH" "setup-router-org.sh:ROUTER_SSH" \
-            "setup-router-cake.sh:ROUTER_SSH" \
-            "setup-client.sh:CLIENT_SSH" "setup-server.sh:SERVER_SSH" \
+            "setup-router-cake.sh:ROUTER_SSH" "set-modem.sh:ROUTER_SSH" \
+            "tins.sh:ROUTER_SSH" "flowwatch.sh:ROUTER_SSH" "dscpmap.sh:ROUTER_SSH" \
+            "setup-client.sh:CLIENT_SSH" "load.sh:CLIENT_SSH" \
+            "setup-server.sh:SERVER_SSH" \
             "caketune.py:ROUTER_SSH" "cakemeter.py:CLIENT_SSH"; do
     file=${spec%%:*}; ref=${spec#*:}
     declare -n SSH=$ref
-    want=$(sum "$file")
+    # the web tools live in ../tools; everything else is next to this script
+    src=$file; [ -e "$src" ] || src=../tools/$file
+    want=$(sum "$src")
 
     if [ "$CHECK_ONLY" = 0 ]; then
-        if ! "${SSH[@]}" "cat > ~/$file && chmod +x ~/$file" < "$file"; then
+        if ! "${SSH[@]}" "cat > ~/$file && chmod +x ~/$file" < "$src"; then
             echo "  $file: PUSH FAILED" >&2; fail=1; continue
         fi
     fi

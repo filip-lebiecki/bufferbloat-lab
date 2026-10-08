@@ -3,7 +3,9 @@
 # Run with sudo.
 #
 # Two jobs:
-#   1. iperf3 listeners on 5201 (all chapters) and 5202 (chapter 7 host B)
+#   1. iperf3 listeners on 5201 (all chapters) and 5202 (chapter 7 host B),
+#      plus 5203-5204 and an irtt server for the CAKE video, which runs up to
+#      four iperf3 tests side by side (one listener serves one test at a time)
 #   2. the emulated last mile on eth0 egress: 20 ms of internet distance,
 #      then a 100 mbit pipe with a dumb 1.5 MB buffer.
 #
@@ -23,7 +25,20 @@ pkill -x iperf3 2>/dev/null || true
 sleep 0.3
 iperf3 -s -D            # 5201
 iperf3 -s -p 5202 -D    # chapter 7: host B's server
+iperf3 -s -p 5203 -D    # CAKE video: the LE "torrent"
+iperf3 -s -p 5204 -D    # CAKE video: spare, for a fourth concurrent stream
 sleep 0.3
+
+echo "== irtt server (the simulated voice call)"
+# -i 0: no minimum send interval. irtt's default floor is 10 ms, and the
+# sparse-flow demo sends every 1 ms. setsid --fork, not nohup &: the latter
+# dies with the ssh session.
+if command -v irtt >/dev/null; then
+    pkill -x irtt 2>/dev/null || true
+    setsid --fork irtt server -i 0 >/dev/null 2>&1 </dev/null
+else
+    echo "   irtt not installed (apt install irtt) — the call demos need it"
+fi
 
 echo "== emulated ISP modem on $WAN"
 tc qdisc del dev $WAN root 2>/dev/null || true
@@ -45,11 +60,12 @@ echo
 echo "== verify"
 tc qdisc show dev $WAN
 pgrep -a iperf3 || true
+pgrep -a irtt || true
 
 echo
-if tc qdisc show dev $WAN | grep -q netem && [ "$(pgrep -xc iperf3)" -ge 2 ] \
+if tc qdisc show dev $WAN | grep -q netem && [ "$(pgrep -xc iperf3)" -ge 4 ] \
    && ip route show | grep -q "blackhole 192.168.80.32"; then
-    echo "SERVER READY — 20 ms + 100 mbit, iperf3 on 5201 and 5202,"
+    echo "SERVER READY — 20 ms + 100 mbit, iperf3 on 5201-5204,"
     echo "               no route back to an unmasqueraded client."
 else
     echo "SERVER NOT READY" >&2

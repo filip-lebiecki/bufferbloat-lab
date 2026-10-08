@@ -37,6 +37,12 @@ margin, and the queue physically relocates onto a device where cake can manage i
 
 90% is the working figure. On a real 490 Mbit line, 94% still graded B and 90% got A+.
 
+**Measure at busy hours**, not at 3 a.m. A 500 Mbit plan that graded A unshaped got
+*worse* with cake at 440 (+25 ms) — that evening the line was only delivering 300–370, so
+the shaper was too fast to take the queue. At 300 it graded A+. If loaded latency stays
+high after shaping, lower the rate and test again: cake's own counters only see cake's
+queue, not the one in the ISP's box.
+
 ---
 
 ## Step 1 — the upload, in one line
@@ -116,7 +122,9 @@ sudo ./deploy/linux/cake-sqm.sh off
 
 > **A note if you also run RouterOS:** `nat` on the *ingress* queue is safe on Linux and
 > measured identical either way (A+ at 0.9 ms with `nat`, 0.8 ms with `nonat`, same client
-> and same line). On RouterOS the equivalent setting on the download queue is actively
+> and same line) — for latency. For *fairness* it matters: the ingress hook sees packets
+> before Linux undoes the NAT, so without `nat` every download looks addressed to the
+> router and `dual-dsthost` has nobody to share between. Keep it. On RouterOS the equivalent setting on the download queue is actively
 > harmful — see [trap 4 in the MikroTik chapter](02-mikrotik.md). Do not carry that finding
 > across; it does not apply here.
 
